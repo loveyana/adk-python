@@ -14,6 +14,7 @@
 
 """Unit tests for BaseLlmFlow toolset integration."""
 
+from typing import AsyncGenerator
 from unittest import mock
 from unittest.mock import AsyncMock
 
@@ -26,6 +27,7 @@ from google.adk.models.llm_response import LlmResponse
 from google.adk.plugins.base_plugin import BasePlugin
 from google.adk.tools.base_toolset import BaseToolset
 from google.adk.tools.google_search_tool import GoogleSearchTool
+from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 import pytest
 
@@ -89,6 +91,156 @@ async def test_preprocess_calls_toolset_process_llm_request():
 
   # Verify that process_llm_request was called on the toolset
   assert mock_toolset.process_llm_request_called
+
+
+@pytest.mark.asyncio
+async def test_preprocess_calls_toolset_generate_preprocessing_events():
+  """Test that _preprocess_async calls generate_preprocessing_events on toolsets."""
+
+  # Create a mock toolset that tracks if generate_preprocessing_events was called
+  class _MockToolset(BaseToolset):
+
+    def __init__(self):
+      super().__init__()
+      self.generate_preprocessing_events_called = False
+      self.generated_events = []
+
+    async def generate_preprocessing_events(
+        self, *, tool_context: ToolContext, llm_request: LlmRequest
+    ) -> AsyncGenerator[Event, None]:
+      self.generate_preprocessing_events_called = True
+      # Generate a mock authentication event
+      auth_event = Event(
+          author='system',
+          invocation_id='test_invocation',
+          content=types.Content(
+              role='model',
+              parts=[types.Part(text='Mock authentication request')],
+          ),
+      )
+      self.generated_events.append(auth_event)
+      yield auth_event
+
+    async def get_tools(self, readonly_context=None):
+      return []
+
+    async def close(self):
+      pass
+
+  mock_toolset = _MockToolset()
+
+  # Create a mock model that returns a simple response
+  mock_response = LlmResponse(
+      content=types.Content(
+          role='model', parts=[types.Part.from_text(text='Test response')]
+      ),
+      partial=False,
+  )
+
+  mock_model = testing_utils.MockModel.create(responses=[mock_response])
+
+  # Create agent with the mock toolset
+  agent = Agent(name='test_agent', model=mock_model, tools=[mock_toolset])
+  invocation_context = await testing_utils.create_invocation_context(
+      agent=agent, user_content='test message'
+  )
+
+  flow = BaseLlmFlowForTesting()
+
+  # Call _preprocess_async
+  llm_request = LlmRequest()
+  events = []
+  async for event in flow._preprocess_async(invocation_context, llm_request):
+    events.append(event)
+
+  # Verify that generate_preprocessing_events was called on the toolset
+  assert mock_toolset.generate_preprocessing_events_called
+
+  # Verify that the generated event was yielded
+  assert len(events) == 1
+  assert events[0].author == 'system'
+  assert events[0].content.parts[0].text == 'Mock authentication request'
+
+
+@pytest.mark.asyncio
+async def test_preprocess_calls_both_generate_events_and_process_request():
+  """Test that _preprocess_async calls both generate_preprocessing_events and process_llm_request."""
+
+  # Create a mock toolset that tracks both method calls
+  class _MockToolset(BaseToolset):
+
+    def __init__(self):
+      super().__init__()
+      self.generate_preprocessing_events_called = False
+      self.process_llm_request_called = False
+      self.call_order = []
+
+    async def generate_preprocessing_events(
+        self, *, tool_context: ToolContext, llm_request: LlmRequest
+    ) -> AsyncGenerator[Event, None]:
+      self.generate_preprocessing_events_called = True
+      self.call_order.append('generate_preprocessing_events')
+      # Generate a mock event
+      yield Event(
+          author='system',
+          invocation_id='test_invocation',
+          content=types.Content(
+              role='model', parts=[types.Part(text='Mock event')]
+          ),
+      )
+
+    async def process_llm_request(
+        self, *, tool_context: ToolContext, llm_request: LlmRequest
+    ) -> None:
+      self.process_llm_request_called = True
+      self.call_order.append('process_llm_request')
+
+    async def get_tools(self, readonly_context=None):
+      return []
+
+    async def close(self):
+      pass
+
+  mock_toolset = _MockToolset()
+
+  # Create a mock model that returns a simple response
+  mock_response = LlmResponse(
+      content=types.Content(
+          role='model', parts=[types.Part.from_text(text='Test response')]
+      ),
+      partial=False,
+  )
+
+  mock_model = testing_utils.MockModel.create(responses=[mock_response])
+
+  # Create agent with the mock toolset
+  agent = Agent(name='test_agent', model=mock_model, tools=[mock_toolset])
+  invocation_context = await testing_utils.create_invocation_context(
+      agent=agent, user_content='test message'
+  )
+
+  flow = BaseLlmFlowForTesting()
+
+  # Call _preprocess_async
+  llm_request = LlmRequest()
+  events = []
+  async for event in flow._preprocess_async(invocation_context, llm_request):
+    events.append(event)
+
+  # Verify that both methods were called
+  assert mock_toolset.generate_preprocessing_events_called
+  assert mock_toolset.process_llm_request_called
+
+  # Verify the correct call order (generate_preprocessing_events first)
+  assert mock_toolset.call_order == [
+      'generate_preprocessing_events',
+      'process_llm_request',
+  ]
+
+  # Verify that the generated event was yielded
+  assert len(events) == 1
+  assert events[0].author == 'system'
+  assert events[0].content.parts[0].text == 'Mock event'
 
 
 @pytest.mark.asyncio

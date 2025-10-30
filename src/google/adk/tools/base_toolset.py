@@ -17,6 +17,7 @@ from __future__ import annotations
 from abc import ABC
 from abc import abstractmethod
 import copy
+from typing import AsyncGenerator
 from typing import final
 from typing import List
 from typing import Optional
@@ -31,6 +32,7 @@ from ..agents.readonly_context import ReadonlyContext
 from .base_tool import BaseTool
 
 if TYPE_CHECKING:
+  from ..events.event import Event
   from ..models.llm_request import LlmRequest
   from .tool_configs import ToolArgsConfig
   from .tool_context import ToolContext
@@ -204,3 +206,31 @@ class BaseToolset(ABC):
       llm_request: The outgoing LLM request, mutable this method.
     """
     pass
+
+  async def generate_preprocessing_events(
+      self, *, tool_context: ToolContext, llm_request: LlmRequest
+  ) -> AsyncGenerator[Event, None]:
+    """Generates events during the preprocessing phase.
+
+    This method allows toolsets to generate events (such as authentication
+    requests) before tool discovery occurs. It has access to the full
+    ToolContext with authentication capabilities.
+
+    Use cases:
+    - OAuth2 authentication flows before tool discovery
+    - User confirmation requests for sensitive toolsets
+    - Dynamic configuration based on user context
+    - Pre-flight checks that require user interaction
+
+    Args:
+      tool_context: The context of the tool with full authentication capabilities.
+      llm_request: The outgoing LLM request, mutable by this method.
+
+    Yields:
+      Event: Events for user interaction (e.g., authentication requests).
+    """
+    # Default implementation yields nothing (backward compatibility)
+    # Subclasses can override to yield authentication or other events
+    if False:  # This ensures the method is an AsyncGenerator
+      yield  # Required for AsyncGenerator type hint
+    return

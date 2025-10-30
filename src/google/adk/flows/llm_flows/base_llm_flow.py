@@ -476,6 +476,15 @@ class BaseLlmFlow(ABC):
 
       # If it's a toolset, process it first
       if isinstance(tool_union, BaseToolset):
+        # Generate preprocessing events (e.g., authentication requests)
+        async with Aclosing(
+            tool_union.generate_preprocessing_events(
+                tool_context=tool_context, llm_request=llm_request
+            )
+        ) as agen:
+          async for event in agen:
+            yield event
+
         await tool_union.process_llm_request(
             tool_context=tool_context, llm_request=llm_request
         )
