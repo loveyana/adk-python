@@ -136,7 +136,6 @@ def get_fast_api_app(
 
   # Build  the Credential service
   credential_service = InMemoryCredentialService()
-
   adk_web_server = AdkWebServer(
       agent_loader=agent_loader,
       session_service=session_service,
@@ -204,6 +203,7 @@ def get_fast_api_app(
         web_assets_dir=ANGULAR_DIST_PATH,
     )
 
+  allow_origins = allow_origins or ["*"]
   app = adk_web_server.get_fast_api_app(
       lifespan=lifespan,
       allow_origins=allow_origins,
