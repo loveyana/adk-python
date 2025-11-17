@@ -721,7 +721,7 @@ class AdkWebServer:
     app.add_middleware(
       build_a2a_auth_middleware
       (
-          app_name=self.current_app_name_ref,                    # 用于凭证范围的应用标识符
+          app_name=self.current_app_name_ref.value,                    # 用于凭证范围的应用标识符
           credential_service=self.credential_service,  # 用于存储/检索凭证的服务
           # auth_method="querystring",            # 替代方案：查询参数认证
           # token_param="token",                  # 查询参数名称（使用查询字符串时）
