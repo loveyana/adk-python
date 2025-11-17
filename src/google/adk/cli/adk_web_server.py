@@ -765,12 +765,20 @@ class AdkWebServer:
                     session = await self.oauth2_handler.exchange_code_for_token(code)
 
                     # Create session cookie
-                    cookie_params = self.oauth2_handler.create_session_cookie(session)
+                    session_cookie_params = self.oauth2_handler.create_session_cookie(session)
 
                     # Redirect to original URL
                     redirect_url = state_data.get("redirect_after_auth", "/")
                     response = RedirectResponse(url=redirect_url, status_code=302)
-                    response.set_cookie(**cookie_params)
+
+                    # Set session cookie
+                    response.set_cookie(**session_cookie_params)
+
+                    # Set user ID cookie for frontend access (if user info available)
+                    user_id_cookie_params = self.oauth2_handler.create_user_id_cookie(session)
+                    if user_id_cookie_params:
+                        response.set_cookie(**user_id_cookie_params)
+                        logger.info("Set user ID cookie for user: %s", session.user_info.get("sub"))
 
                     return response
 
@@ -784,7 +792,14 @@ class AdkWebServer:
             async def oauth2_logout():
                 """Logout and clear session."""
                 response = RedirectResponse(url="/", status_code=302)
+
+                # Clear session cookie
                 response.delete_cookie(self.oauth2_handler.config.session_cookie_name)
+
+                # Clear user ID cookie
+                response.delete_cookie("adk_user_id")
+
+                logger.info("User logged out, cleared session and user ID cookies")
                 return response
 
             @app.get("/oauth2/userinfo")
@@ -803,9 +818,15 @@ class AdkWebServer:
                             session.user_info = user_info
 
                             # Update the session cookie with user info
-                            cookie_params = self.oauth2_handler.create_session_cookie(session)
+                            session_cookie_params = self.oauth2_handler.create_session_cookie(session)
                             response = JSONResponse(content=user_info)
-                            response.set_cookie(**cookie_params)
+                            response.set_cookie(**session_cookie_params)
+
+                            # Set user ID cookie for frontend access
+                            user_id_cookie_params = self.oauth2_handler.create_user_id_cookie(session)
+                            if user_id_cookie_params:
+                                response.set_cookie(**user_id_cookie_params)
+
                             return response
                         except Exception as e:
                             logger.error("Failed to fetch user info: %s", e)

@@ -267,6 +267,20 @@ class OAuth2Handler:
         "samesite": "lax",
     }
 
+  def create_user_id_cookie(self, session: OAuth2Session) -> Optional[dict[str, Any]]:
+    """Create user ID cookie for frontend access (non-HTTP-only)."""
+    if not session.user_info or "sub" not in session.user_info:
+      return None
+
+    return {
+        "key": "adk_user_id",
+        "value": session.user_info["sub"],
+        "max_age": self.config.session_timeout_seconds,
+        "httponly": False,  # Allow frontend JavaScript access
+        "secure": True,  # Enable in production with HTTPS
+        "samesite": "lax",
+    }
+
 
 def create_oauth2_middleware(oauth2_handler: OAuth2Handler):
   """Create OAuth2 authentication middleware for FastAPI."""
