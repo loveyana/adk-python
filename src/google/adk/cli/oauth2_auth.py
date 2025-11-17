@@ -135,17 +135,25 @@ class OAuth2Handler:
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": self.config.redirect_uri,
-        "client_id": self.config.client_id,
     }
     
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    
+    # Use Basic Auth for client credentials
     if self.config.client_secret:
-      token_data["client_secret"] = self.config.client_secret
+      import base64
+      credentials = f"{self.config.client_id}:{self.config.client_secret}"
+      encoded_credentials = base64.b64encode(credentials.encode()).decode()
+      headers["Authorization"] = f"Basic {encoded_credentials}"
+    else:
+      # Fallback to client_id in form data if no client_secret
+      token_data["client_id"] = self.config.client_id
     
     try:
       response = await self._http_client.post(
           self.config.token_url,
           data=token_data,
-          headers={"Content-Type": "application/x-www-form-urlencoded"},
+          headers=headers,
       )
       response.raise_for_status()
       

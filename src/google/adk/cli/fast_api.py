@@ -33,6 +33,7 @@ from opentelemetry.sdk.trace import export
 from opentelemetry.sdk.trace import TracerProvider
 from starlette.types import Lifespan
 from watchdog.observers import Observer
+from veadk.auth.credential_service import VeCredentialService
 
 from ..artifacts.in_memory_artifact_service import InMemoryArtifactService
 from ..auth.credential_service.in_memory_credential_service import InMemoryCredentialService
@@ -158,7 +159,7 @@ def get_fast_api_app(
     artifact_service = InMemoryArtifactService()
 
   # Build  the Credential service
-  credential_service = InMemoryCredentialService()
+  credential_service = VeCredentialService()
 
   # Create OAuth2 config from environment variables
   oauth2_config = create_oauth2_config_from_env(host, port)

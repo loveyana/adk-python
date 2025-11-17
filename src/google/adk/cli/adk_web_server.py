@@ -102,6 +102,7 @@ from .utils.state import create_empty_state
 from .oauth2_auth import OAuth2Config
 from .oauth2_auth import OAuth2Handler
 from .oauth2_auth import create_oauth2_middleware
+from veadk.a2a.ve_middlewares import build_a2a_auth_middleware 
 
 logger = logging.getLogger("google_adk." + __name__)
 
@@ -717,6 +718,15 @@ class AdkWebServer:
     if self.oauth2_handler:
       app.middleware("http")(create_oauth2_middleware(self.oauth2_handler))
 
+    app.add_middleware(
+      build_a2a_auth_middleware
+      (
+          app_name=self.current_app_name_ref,                    # 用于凭证范围的应用标识符
+          credential_service=self.credential_service,  # 用于存储/检索凭证的服务
+          # auth_method="querystring",            # 替代方案：查询参数认证
+          # token_param="token",                  # 查询参数名称（使用查询字符串时）
+    )
+)
     # OAuth2 routes
     if self.oauth2_handler:
 
