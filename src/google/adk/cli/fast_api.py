@@ -73,6 +73,7 @@ def create_oauth2_config_from_env(host: str, port: int) -> Optional[OAuth2Config
       client_secret=os.getenv("ADK_OAUTH2_CLIENT_SECRET"),
       scope=os.getenv("ADK_OAUTH2_SCOPE", "openid profile"),
       redirect_uri=redirect_uri,
+      userinfo_url=os.getenv("ADK_OAUTH2_USERINFO_URL"),
   )
 
 

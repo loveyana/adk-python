@@ -57,6 +57,9 @@ class OAuth2Config(BaseModel):
   session_cookie_name: str = "adk_session"
   session_timeout_seconds: int = 3600  # 1 hour
 
+  # User info endpoint (optional)
+  userinfo_url: Optional[str] = None
+
 
 class OAuth2Session(BaseModel):
   """OAuth2 session data stored in cookies."""
@@ -162,13 +165,27 @@ class OAuth2Handler:
       # Calculate expiration time
       expires_in = token_response.get("expires_in", 3600)
       expires_at = time.time() + expires_in
-      
-      return OAuth2Session(
+
+      # Create session with token information
+      session = OAuth2Session(
           access_token=token_response["access_token"],
           token_type=token_response.get("token_type", "Bearer"),
           expires_at=expires_at,
           refresh_token=token_response.get("refresh_token"),
       )
+
+      # Fetch user info if userinfo_url is configured
+      if self.config.userinfo_url:
+        try:
+          user_info = await self._fetch_user_info(session.access_token)
+          session.user_info = user_info
+          logger.info("Successfully fetched user info for user: %s",
+                     user_info.get("sub") or user_info.get("email") or "unknown")
+        except Exception as e:
+          logger.warning("Failed to fetch user info: %s", e)
+          # Continue without user info - don't fail the authentication
+
+      return session
       
     except httpx.HTTPStatusError as e:
       logger.error("Token exchange failed: %s", e.response.text)
@@ -179,6 +196,34 @@ class OAuth2Handler:
     except Exception as e:
       logger.error("Token exchange error: %s", e)
       raise HTTPException(status_code=500, detail="Authentication failed")
+
+  async def _fetch_user_info(self, access_token: str) -> dict[str, Any]:
+    """Fetch user information from the userinfo endpoint."""
+    if not self.config.userinfo_url:
+      raise ValueError("userinfo_url not configured")
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json",
+    }
+
+    try:
+      response = await self._http_client.get(
+          self.config.userinfo_url,
+          headers=headers,
+      )
+      response.raise_for_status()
+
+      user_info = response.json()
+      logger.debug("Fetched user info: %s", user_info)
+      return user_info
+
+    except httpx.HTTPStatusError as e:
+      logger.error("User info fetch failed: %s", e.response.text)
+      raise Exception(f"User info fetch failed: {e.response.text}")
+    except Exception as e:
+      logger.error("User info fetch error: %s", e)
+      raise Exception(f"User info fetch error: {e}")
 
   def encode_session(self, session: OAuth2Session) -> str:
     """Encode OAuth2 session data for cookie storage."""
@@ -238,17 +283,26 @@ def create_oauth2_middleware(oauth2_handler: OAuth2Handler):
 
     if session and not session.is_expired():
       # Add Authorization header to the request
-      # Create a new scope with the authorization header
-      scope = request.scope.copy()
-      headers = list(scope.get("headers", []))
-      headers.append((b"authorization", session.to_authorization_header().encode()))
-      scope["headers"] = headers
+      # Method 1: Modify the scope directly (more compatible)
+      auth_header_value = session.to_authorization_header().encode()
 
-      # Create a new request with the modified scope
-      from starlette.requests import Request as StarletteRequest
-      authenticated_request = StarletteRequest(scope)
+      # Get existing headers and add the authorization header
+      headers = list(request.scope.get("headers", []))
 
-      return await call_next(authenticated_request)
+      # Remove any existing authorization header first
+      headers = [(name, value) for name, value in headers
+                 if name.lower() != b"authorization"]
+
+      # Add the new authorization header
+      headers.append((b"authorization", auth_header_value))
+
+      # Update the scope in place
+      request.scope["headers"] = headers
+
+      logger.debug("Added Authorization header to request: %s",
+                   session.to_authorization_header()[:20] + "...")
+
+      return await call_next(request)
 
     # No valid session, redirect to OAuth2 authorization
     state = oauth2_handler.state_store.create_state(
