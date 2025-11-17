@@ -222,9 +222,7 @@ def create_oauth2_middleware(oauth2_handler: OAuth2Handler):
     """OAuth2 authentication middleware."""
 
     # Skip authentication for OAuth2 callback and static assets
-    if (request.url.path.startswith("/oauth2/") or
-        request.url.path.startswith("/dev-ui/") or
-        request.url.path == "/"):
+    if request.url.path.startswith("/oauth2/"):
       return await call_next(request)
 
     # Check for existing session
