@@ -788,7 +788,7 @@ class AdkWebServer:
                     logger.error("OAuth2 callback error: %s", e)
                     raise HTTPException(status_code=500, detail="Authentication failed")
 
-            @app.post("/oauth2/logout")
+            @app.get("/oauth2/logout")
             async def oauth2_logout():
                 """Logout and clear session."""
                 response = RedirectResponse(url="/", status_code=302)
