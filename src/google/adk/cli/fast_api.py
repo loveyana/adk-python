@@ -42,6 +42,7 @@ from ..memory.in_memory_memory_service import InMemoryMemoryService
 from ..runners import Runner
 from ..sessions.in_memory_session_service import InMemorySessionService
 from .adk_web_server import AdkWebServer
+from .oauth2_auth import OAuth2Config
 from .service_registry import get_service_registry
 from .service_registry import load_services_module
 from .utils import envs
@@ -50,6 +51,28 @@ from .utils.agent_change_handler import AgentChangeEventHandler
 from .utils.agent_loader import AgentLoader
 
 logger = logging.getLogger("google_adk." + __name__)
+
+
+def create_oauth2_config_from_env(host: str, port: int) -> Optional[OAuth2Config]:
+  """Create OAuth2 config from environment variables."""
+  authorize_url = os.getenv("ADK_OAUTH2_AUTHORIZE_URL")
+  token_url = os.getenv("ADK_OAUTH2_TOKEN_URL")
+  client_id = os.getenv("ADK_OAUTH2_CLIENT_ID")
+
+  if not all([authorize_url, token_url, client_id]):
+    return None
+
+  # Build redirect URI based on server configuration
+  redirect_uri = f"http://{host}:{port}/oauth2/callback"
+
+  return OAuth2Config(
+      authorize_url=authorize_url,
+      token_url=token_url,
+      client_id=client_id,
+      client_secret=os.getenv("ADK_OAUTH2_CLIENT_SECRET"),
+      scope=os.getenv("ADK_OAUTH2_SCOPE", "openid profile"),
+      redirect_uri=redirect_uri,
+  )
 
 
 def get_fast_api_app(
@@ -136,6 +159,12 @@ def get_fast_api_app(
 
   # Build  the Credential service
   credential_service = InMemoryCredentialService()
+
+  # Create OAuth2 config from environment variables
+  oauth2_config = create_oauth2_config_from_env(host, port)
+  if oauth2_config:
+    logger.info("OAuth2 authentication enabled")
+
   adk_web_server = AdkWebServer(
       agent_loader=agent_loader,
       session_service=session_service,
@@ -149,6 +178,7 @@ def get_fast_api_app(
       logo_text=logo_text,
       logo_image_url=logo_image_url,
       url_prefix=url_prefix,
+      oauth2_config=oauth2_config,
   )
 
   # Callbacks & other optional args for when constructing the FastAPI instance

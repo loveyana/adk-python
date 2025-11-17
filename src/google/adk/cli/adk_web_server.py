@@ -23,15 +23,20 @@ import os
 import time
 import traceback
 import typing
+import urllib.parse
+import uuid
 from typing import Any
 from typing import Callable
 from typing import List
 from typing import Literal
 from typing import Optional
 
+import httpx
+
 from fastapi import FastAPI
 from fastapi import HTTPException
 from fastapi import Query
+from fastapi import Request
 from fastapi import Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -94,6 +99,9 @@ from .utils import evals
 from .utils.base_agent_loader import BaseAgentLoader
 from .utils.shared_value import SharedValue
 from .utils.state import create_empty_state
+from .oauth2_auth import OAuth2Config
+from .oauth2_auth import OAuth2Handler
+from .oauth2_auth import create_oauth2_middleware
 
 logger = logging.getLogger("google_adk." + __name__)
 
@@ -437,6 +445,7 @@ class AdkWebServer:
       logo_text: Optional[str] = None,
       logo_image_url: Optional[str] = None,
       url_prefix: Optional[str] = None,
+      oauth2_config: Optional[OAuth2Config] = None,
   ):
     self.agent_loader = agent_loader
     self.session_service = session_service
@@ -454,6 +463,12 @@ class AdkWebServer:
     self.current_app_name_ref: SharedValue[str] = SharedValue(value="")
     self.runner_dict = {}
     self.url_prefix = url_prefix
+
+    # OAuth2 configuration
+    self.oauth2_config = oauth2_config
+    self.oauth2_handler: Optional[OAuth2Handler] = None
+    if oauth2_config:
+      self.oauth2_handler = OAuth2Handler(oauth2_config)
 
   async def get_runner_async(self, app_name: str) -> Runner:
     """Returns the cached runner for the given app."""
@@ -697,6 +712,68 @@ class AdkWebServer:
           allow_methods=["*"],
           allow_headers=["*"],
       )
+
+    # Add OAuth2 middleware if configured
+    if self.oauth2_handler:
+      app.middleware("http")(create_oauth2_middleware(self.oauth2_handler))
+
+    # OAuth2 routes
+    if self.oauth2_handler:
+
+      @app.get("/oauth2/callback")
+      async def oauth2_callback(
+          request: Request,
+          code: Optional[str] = None,
+          state: Optional[str] = None,
+          error: Optional[str] = None,
+      ):
+        """Handle OAuth2 authorization callback."""
+        if error:
+          raise HTTPException(
+              status_code=400,
+              detail=f"OAuth2 authorization failed: {error}"
+          )
+
+        if not code or not state:
+          raise HTTPException(
+              status_code=400,
+              detail="Missing authorization code or state"
+          )
+
+        # Validate state parameter
+        state_data = self.oauth2_handler.state_store.validate_and_consume_state(state)
+        if not state_data:
+          raise HTTPException(
+              status_code=400,
+              detail="Invalid or expired state parameter"
+          )
+
+        try:
+          # Exchange code for token
+          session = await self.oauth2_handler.exchange_code_for_token(code)
+
+          # Create session cookie
+          cookie_params = self.oauth2_handler.create_session_cookie(session)
+
+          # Redirect to original URL
+          redirect_url = state_data.get("redirect_after_auth", "/")
+          response = RedirectResponse(url=redirect_url, status_code=302)
+          response.set_cookie(**cookie_params)
+
+          return response
+
+        except HTTPException:
+          raise
+        except Exception as e:
+          logger.error("OAuth2 callback error: %s", e)
+          raise HTTPException(status_code=500, detail="Authentication failed")
+
+      @app.post("/oauth2/logout")
+      async def oauth2_logout():
+        """Logout and clear session."""
+        response = RedirectResponse(url="/", status_code=302)
+        response.delete_cookie(self.oauth2_handler.config.session_cookie_name)
+        return response
 
     @app.get("/list-apps")
     async def list_apps() -> list[str]:
