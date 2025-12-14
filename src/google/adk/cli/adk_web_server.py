@@ -1547,6 +1547,7 @@ class AdkWebServer:
             # Convert the events to properly formatted SSE
             async def event_generator():
                 try:
+                    pending_auth = False
                     current_message = req.new_message
                     stream_mode = (
                         StreamingMode.SSE if req.streaming else StreamingMode.NONE
