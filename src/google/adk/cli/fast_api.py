@@ -53,18 +53,34 @@ from .utils.agent_loader import AgentLoader
 
 logger = logging.getLogger("google_adk." + __name__)
 
+def _authorize_url_template(pool_uid: str, region: str= "cn-beijing") -> str:
+  return f"https://userpool-{pool_uid}.userpool.auth.id.{region}.volces.com/authorize"
+
+def _token_url_template(pool_uid: str, region: str= "cn-beijing") -> str:
+  return f"https://userpool-{pool_uid}.userpool.auth.id.{region}.volces.com/oauth/token"
+
+def _userinfo_url_template(pool_uid: str, region: str= "cn-beijing") -> str:
+  return f"https://userpool-{pool_uid}.userpool.auth.id.{region}.volces.com/userinfo"
 
 def create_oauth2_config_from_env(host: str, port: int) -> Optional[OAuth2Config]:
   """Create OAuth2 config from environment variables."""
   authorize_url = os.getenv("ADK_OAUTH2_AUTHORIZE_URL")
   token_url = os.getenv("ADK_OAUTH2_TOKEN_URL")
+  userinfo_url = os.getenv("ADK_OAUTH2_USERINFO_URL")
   client_id = os.getenv("ADK_OAUTH2_CLIENT_ID")
+
+  if os.getenv("ADK_OAUTH2_USERPOOL_UID"):
+    authorize_url = _authorize_url_template(os.getenv("ADK_OAUTH2_USERPOOL_UID"))
+    token_url = _token_url_template(os.getenv("ADK_OAUTH2_USERPOOL_UID"))
+    userinfo_url = _userinfo_url_template(os.getenv("ADK_OAUTH2_USERPOOL_UID"))
 
   if not all([authorize_url, token_url, client_id]):
     return None
 
   # Build redirect URI based on server configuration
   redirect_uri = f"http://{host}:{port}/oauth2/callback"
+  if os.getenv("ADK_OAUTH2_REDIRECT_URI"):
+    redirect_uri = os.getenv("ADK_OAUTH2_REDIRECT_URI") 
 
   return OAuth2Config(
       authorize_url=authorize_url,
@@ -73,7 +89,7 @@ def create_oauth2_config_from_env(host: str, port: int) -> Optional[OAuth2Config
       client_secret=os.getenv("ADK_OAUTH2_CLIENT_SECRET"),
       scope=os.getenv("ADK_OAUTH2_SCOPE", "openid profile"),
       redirect_uri=redirect_uri,
-      userinfo_url=os.getenv("ADK_OAUTH2_USERINFO_URL"),
+      userinfo_url=userinfo_url,
   )
 
 
