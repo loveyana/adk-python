@@ -104,7 +104,12 @@ from .oauth2_auth import OAuth2Config
 from .oauth2_auth import OAuth2Handler
 from .oauth2_auth import create_oauth2_middleware
 from veadk.a2a.ve_middlewares import build_a2a_auth_middleware
-
+from veadk.integrations.ve_identity import (
+    get_function_call_auth_config,
+    get_function_call_id,
+    is_pending_auth_event,
+    AuthRequestProcessor,
+)
 logger = logging.getLogger("google_adk." + __name__)
 
 _EVAL_SET_FILE_EXTENSION = ".evalset.json"
@@ -1538,33 +1543,46 @@ class AdkWebServer:
             )
             if not session:
                 raise HTTPException(status_code=404, detail="Session not found")
-
+            processor = AuthRequestProcessor()
             # Convert the events to properly formatted SSE
             async def event_generator():
                 try:
+                    current_message = req.new_message
                     stream_mode = (
                         StreamingMode.SSE if req.streaming else StreamingMode.NONE
                     )
                     runner = await self.get_runner_async(req.app_name)
-                    async with Aclosing(
-                        runner.run_async(
-                            user_id=req.user_id,
-                            session_id=req.session_id,
-                            new_message=req.new_message,
-                            state_delta=req.state_delta,
-                            run_config=RunConfig(streaming_mode=stream_mode),
-                            invocation_id=req.invocation_id,
-                        )
-                    ) as agen:
-                        async for event in agen:
-                            # Format as SSE data
-                            sse_event = event.model_dump_json(
-                                exclude_none=True, by_alias=True
+                    while True:
+                        async with Aclosing(
+                            runner.run_async(
+                                user_id=req.user_id,
+                                session_id=req.session_id,
+                                new_message=current_message,
+                                state_delta=req.state_delta,
+                                run_config=RunConfig(streaming_mode=stream_mode),
+                                invocation_id=req.invocation_id,
                             )
-                            logger.debug(
-                                "Generated event in agent run streaming: %s", sse_event
-                            )
-                            yield f"data: {sse_event}\n\n"
+                        ) as agen:
+                            async for event in agen:
+                                # Format as SSE data
+                                sse_event = event.model_dump_json(
+                                    exclude_none=True, by_alias=True
+                                )
+                                logger.debug(
+                                    "Generated event in agent run streaming: %s", sse_event
+                                )
+                                yield f"data: {sse_event}\n\n"
+                                # Check for auth requests
+                                if is_pending_auth_event(event):
+                                    auth_request_event_id = get_function_call_id(event)
+                                    auth_config = get_function_call_auth_config(event)
+                                    current_message = await processor.process_auth_request(
+                                        auth_request_event_id, auth_config
+                                    )
+                                    pending_auth = True
+                                    break
+                        if not pending_auth:
+                            break
                 except Exception as e:
                     logger.exception("Error in event_generator: %s", e)
                     # You might want to yield an error event here
