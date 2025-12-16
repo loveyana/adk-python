@@ -1547,13 +1547,13 @@ class AdkWebServer:
             # Convert the events to properly formatted SSE
             async def event_generator():
                 try:
-                    pending_auth = False
                     current_message = req.new_message
                     stream_mode = (
                         StreamingMode.SSE if req.streaming else StreamingMode.NONE
                     )
                     runner = await self.get_runner_async(req.app_name)
                     while True:
+                        pending_auth = False
                         async with Aclosing(
                             runner.run_async(
                                 user_id=req.user_id,
