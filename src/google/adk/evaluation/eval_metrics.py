@@ -1,4 +1,4 @@
-# Copyright 2025 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -258,9 +258,11 @@ class EvalMetric(EvalBaseModel):
       description="The name of the metric.",
   )
 
-  threshold: float = Field(
+  threshold: Optional[float] = Field(
+      default=None,
       description=(
-          "A threshold value. Each metric decides how to interpret this"
+          "This field will be deprecated soon. Please use `criterion` instead."
+          " A threshold value. Each metric decides how to interpret this"
           " threshold."
       ),
   )
