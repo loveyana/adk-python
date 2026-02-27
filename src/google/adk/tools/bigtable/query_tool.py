@@ -16,16 +16,18 @@ from __future__ import annotations
 
 """Tool to execute SQL queries against Bigtable."""
 import json
+import logging
 from typing import Any
 from typing import Dict
 from typing import List
 
 from google.auth.credentials import Credentials
-from google.cloud import bigtable
 
 from . import client
 from ..tool_context import ToolContext
 from .settings import BigtableToolSettings
+
+logger = logging.getLogger("google_adk." + __name__)
 
 DEFAULT_MAX_EXECUTED_QUERY_RESULT_ROWS = 50
 
@@ -37,6 +39,8 @@ def execute_sql(
     credentials: Credentials,
     settings: BigtableToolSettings,
     tool_context: ToolContext,
+    parameters: Dict[str, Any] | None = None,
+    parameter_types: Dict[str, Any] | None = None,
 ) -> dict:
   """Execute a GoogleSQL query from a Bigtable table.
 
@@ -48,6 +52,10 @@ def execute_sql(
       credentials (Credentials): The credentials to use for the request.
       settings (BigtableToolSettings): The configuration for the tool.
       tool_context (ToolContext): The context for the tool.
+      parameters (dict): properties for parameter replacement. Keys must match
+        the names used in ``query``.
+      parameter_types (dict): maps explicit types for one or more param values.
+
   Returns:
       dict: Dictionary containing the status and the rows read.
             If the result contains the key "result_is_likely_truncated" with
@@ -56,18 +64,19 @@ def execute_sql(
 
   Examples:
       Fetch data or insights from a table:
-
-          >>> execute_sql("my_project", "my_instance",
-          ... "SELECT * from mytable", credentials, config, tool_context)
-          {
-            "status": "SUCCESS",
-            "rows": [
-                {
-                    "user_id": 1,
-                    "user_name": "Alice"
-                }
-            ]
-          }
+      <Example>
+        >>> execute_sql("my_project", "my_instance",
+        ... "SELECT * from mytable", credentials, config, tool_context)
+        {
+          "status": "SUCCESS",
+          "rows": [
+              {
+                  "user_id": 1,
+                  "user_name": "Alice"
+              }
+          ]
+        }
+      </Example>
   """
   del tool_context  # Unused for now
 
@@ -78,6 +87,8 @@ def execute_sql(
     eqi = bt_client.execute_query(
         query=query,
         instance_id=instance_id,
+        parameters=parameters,
+        parameter_types=parameter_types,
     )
 
     rows: List[Dict[str, Any]] = []
@@ -98,7 +109,7 @@ def execute_sql(
           try:
             # if the json serialization of the value succeeds, use it as is
             json.dumps(val)
-          except:
+          except (TypeError, ValueError, OverflowError):
             val = str(val)
           row_values[key] = val
         rows.append(row_values)
@@ -112,7 +123,7 @@ def execute_sql(
     return result
 
   except Exception as ex:
-    print(ex)
+    logger.error("Bigtable query failed: %s", ex)
     return {
         "status": "ERROR",
         "error_details": str(ex),

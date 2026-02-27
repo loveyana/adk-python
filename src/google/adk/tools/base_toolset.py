@@ -29,208 +29,209 @@ from typing import TypeVar
 from typing import Union
 
 from ..agents.readonly_context import ReadonlyContext
+from ..auth.auth_tool import AuthConfig
 from .base_tool import BaseTool
 
 if TYPE_CHECKING:
-  from ..events.event import Event
-  from ..models.llm_request import LlmRequest
-  from .tool_configs import ToolArgsConfig
-  from .tool_context import ToolContext
+    from ..events.event import Event
+    from ..models.llm_request import LlmRequest
+    from .tool_configs import ToolArgsConfig
+    from .tool_context import ToolContext
 
 
 @runtime_checkable
 class ToolPredicate(Protocol):
-  """Base class for a predicate that defines the interface to decide whether a
+    """Base class for a predicate that defines the interface to decide whether a
 
-  tool should be exposed to LLM. Toolset implementer could consider whether to
-  accept such instance in the toolset's constructor and apply the predicate in
-  get_tools method.
-  """
-
-  def __call__(
-      self, tool: BaseTool, readonly_context: Optional[ReadonlyContext] = None
-  ) -> bool:
-    """Decide whether the passed-in tool should be exposed to LLM based on the
-
-    current context. True if the tool is usable by the LLM.
-
-    It's used to filter tools in the toolset.
+    tool should be exposed to LLM. Toolset implementer could consider whether to
+    accept such instance in the toolset's constructor and apply the predicate in
+    get_tools method.
     """
+
+    def __call__(
+        self, tool: BaseTool, readonly_context: Optional[ReadonlyContext] = None
+    ) -> bool:
+        """Decide whether the passed-in tool should be exposed to LLM based on the
+
+        current context. True if the tool is usable by the LLM.
+
+        It's used to filter tools in the toolset.
+        """
 
 
 SelfToolset = TypeVar("SelfToolset", bound="BaseToolset")
 
 
 class BaseToolset(ABC):
-  """Base class for toolset.
+    """Base class for toolset.
 
-  A toolset is a collection of tools that can be used by an agent.
-  """
-
-  def __init__(
-      self,
-      *,
-      tool_filter: Optional[Union[ToolPredicate, List[str]]] = None,
-      tool_name_prefix: Optional[str] = None,
-  ):
-    """Initialize the toolset.
-
-    Args:
-      tool_filter: Filter to apply to tools.
-      tool_name_prefix: The prefix to prepend to the names of the tools returned by the toolset.
-    """
-    self.tool_filter = tool_filter
-    self.tool_name_prefix = tool_name_prefix
-
-  @abstractmethod
-  async def get_tools(
-      self,
-      readonly_context: Optional[ReadonlyContext] = None,
-  ) -> list[BaseTool]:
-    """Return all tools in the toolset based on the provided context.
-
-    Args:
-      readonly_context (ReadonlyContext, optional): Context used to filter tools
-        available to the agent. If None, all tools in the toolset are returned.
-
-    Returns:
-      list[BaseTool]: A list of tools available under the specified context.
+    A toolset is a collection of tools that can be used by an agent.
     """
 
-  @final
-  async def get_tools_with_prefix(
-      self,
-      readonly_context: Optional[ReadonlyContext] = None,
-  ) -> list[BaseTool]:
-    """Return all tools with optional prefix applied to tool names.
+    def __init__(
+        self,
+        *,
+        tool_filter: Optional[Union[ToolPredicate, List[str]]] = None,
+        tool_name_prefix: Optional[str] = None,
+    ):
+        """Initialize the toolset.
 
-    This method calls get_tools() and applies prefixing if tool_name_prefix is provided.
+        Args:
+          tool_filter: Filter to apply to tools.
+          tool_name_prefix: The prefix to prepend to the names of the tools returned by the toolset.
+        """
+        self.tool_filter = tool_filter
+        self.tool_name_prefix = tool_name_prefix
 
-    Args:
-      readonly_context (ReadonlyContext, optional): Context used to filter tools
-        available to the agent. If None, all tools in the toolset are returned.
+    @abstractmethod
+    async def get_tools(
+        self,
+        readonly_context: Optional[ReadonlyContext] = None,
+    ) -> list[BaseTool]:
+        """Return all tools in the toolset based on the provided context.
 
-    Returns:
-      list[BaseTool]: A list of tools with prefixed names if tool_name_prefix is provided.
-    """
-    tools = await self.get_tools(readonly_context)
+        Args:
+          readonly_context (ReadonlyContext, optional): Context used to filter tools
+            available to the agent. If None, all tools in the toolset are returned.
 
-    if not self.tool_name_prefix:
-      return tools
+        Returns:
+          list[BaseTool]: A list of tools available under the specified context.
+        """
 
-    prefix = self.tool_name_prefix
+    @final
+    async def get_tools_with_prefix(
+        self,
+        readonly_context: Optional[ReadonlyContext] = None,
+    ) -> list[BaseTool]:
+        """Return all tools with optional prefix applied to tool names.
 
-    # Create copies of tools to avoid modifying original instances
-    prefixed_tools = []
-    for tool in tools:
-      # Create a shallow copy of the tool
-      tool_copy = copy.copy(tool)
+        This method calls get_tools() and applies prefixing if tool_name_prefix is provided.
 
-      # Apply prefix to the copied tool
-      prefixed_name = f"{prefix}_{tool.name}"
-      tool_copy.name = prefixed_name
+        Args:
+          readonly_context (ReadonlyContext, optional): Context used to filter tools
+            available to the agent. If None, all tools in the toolset are returned.
 
-      # Also update the function declaration name if the tool has one
-      # Use default parameters to capture the current values in the closure
-      def _create_prefixed_declaration(
-          original_get_declaration=tool._get_declaration,
-          prefixed_name=prefixed_name,
-      ):
-        def _get_prefixed_declaration():
-          declaration = original_get_declaration()
-          if declaration is not None:
-            declaration.name = prefixed_name
-            return declaration
-          return None
+        Returns:
+          list[BaseTool]: A list of tools with prefixed names if tool_name_prefix is provided.
+        """
+        tools = await self.get_tools(readonly_context)
 
-        return _get_prefixed_declaration
+        if not self.tool_name_prefix:
+            return tools
 
-      tool_copy._get_declaration = _create_prefixed_declaration()
-      prefixed_tools.append(tool_copy)
+        prefix = self.tool_name_prefix
 
-    return prefixed_tools
+        # Create copies of tools to avoid modifying original instances
+        prefixed_tools = []
+        for tool in tools:
+            # Create a shallow copy of the tool
+            tool_copy = copy.copy(tool)
 
-  async def close(self) -> None:
-    """Performs cleanup and releases resources held by the toolset.
+            # Apply prefix to the copied tool
+            prefixed_name = f"{prefix}_{tool.name}"
+            tool_copy.name = prefixed_name
 
-    NOTE:
-      This method is invoked, for example, at the end of an agent server's
-      lifecycle or when the toolset is no longer needed. Implementations
-      should ensure that any open connections, files, or other managed
-      resources are properly released to prevent leaks.
-    """
+            # Also update the function declaration name if the tool has one
+            # Use default parameters to capture the current values in the closure
+            def _create_prefixed_declaration(
+                original_get_declaration=tool._get_declaration,
+                prefixed_name=prefixed_name,
+            ):
+                def _get_prefixed_declaration():
+                    declaration = original_get_declaration()
+                    if declaration is not None:
+                        declaration.name = prefixed_name
+                        return declaration
+                    return None
 
-  @classmethod
-  def from_config(
-      cls: Type[SelfToolset], config: ToolArgsConfig, config_abs_path: str
-  ) -> SelfToolset:
-    """Creates a toolset instance from a config.
+                return _get_prefixed_declaration
 
-    Args:
-      config: The config for the tool.
-      config_abs_path: The absolute path to the config file that contains the
-        tool config.
+            tool_copy._get_declaration = _create_prefixed_declaration()
+            prefixed_tools.append(tool_copy)
 
-    Returns:
-      The toolset instance.
-    """
-    raise ValueError(f"from_config() not implemented for toolset: {cls}")
+        return prefixed_tools
 
-  def _is_tool_selected(
-      self, tool: BaseTool, readonly_context: ReadonlyContext
-  ) -> bool:
-    if not self.tool_filter:
-      return True
+    async def close(self) -> None:
+        """Performs cleanup and releases resources held by the toolset.
 
-    if isinstance(self.tool_filter, ToolPredicate):
-      return self.tool_filter(tool, readonly_context)
+        NOTE:
+          This method is invoked, for example, at the end of an agent server's
+          lifecycle or when the toolset is no longer needed. Implementations
+          should ensure that any open connections, files, or other managed
+          resources are properly released to prevent leaks.
+        """
 
-    if isinstance(self.tool_filter, list):
-      return tool.name in self.tool_filter
+    @classmethod
+    def from_config(
+        cls: Type[SelfToolset], config: ToolArgsConfig, config_abs_path: str
+    ) -> SelfToolset:
+        """Creates a toolset instance from a config.
 
-    return False
+        Args:
+          config: The config for the tool.
+          config_abs_path: The absolute path to the config file that contains the
+            tool config.
 
-  async def process_llm_request(
-      self, *, tool_context: ToolContext, llm_request: LlmRequest
-  ) -> None:
-    """Processes the outgoing LLM request for this toolset. This method will be
-    called before each tool processes the llm request.
+        Returns:
+          The toolset instance.
+        """
+        raise ValueError(f"from_config() not implemented for toolset: {cls}")
 
-    Use cases:
-    - Instead of let each tool process the llm request, we can let the toolset
-      process the llm request. e.g. ComputerUseToolset can add computer use
-      tool to the llm request.
+    def _is_tool_selected(
+        self, tool: BaseTool, readonly_context: ReadonlyContext
+    ) -> bool:
+        if not self.tool_filter:
+            return True
 
-    Args:
-      tool_context: The context of the tool.
-      llm_request: The outgoing LLM request, mutable this method.
-    """
-    pass
+        if isinstance(self.tool_filter, ToolPredicate):
+            return self.tool_filter(tool, readonly_context)
 
-  async def generate_preprocessing_events(
-      self, *, tool_context: ToolContext, llm_request: LlmRequest
-  ) -> AsyncGenerator[Event, None]:
-    """Generates events during the preprocessing phase.
+        if isinstance(self.tool_filter, list):
+            return tool.name in self.tool_filter
 
-    This method allows toolsets to generate events (such as authentication
-    requests) before tool discovery occurs. It has access to the full
-    ToolContext with authentication capabilities.
+        return False
 
-    Use cases:
-    - OAuth2 authentication flows before tool discovery
-    - User confirmation requests for sensitive toolsets
-    - Dynamic configuration based on user context
-    - Pre-flight checks that require user interaction
+    async def process_llm_request(
+        self, *, tool_context: ToolContext, llm_request: LlmRequest
+    ) -> None:
+        """Processes the outgoing LLM request for this toolset. This method will be
+        called before each tool processes the llm request.
 
-    Args:
-      tool_context: The context of the tool with full authentication capabilities.
-      llm_request: The outgoing LLM request, mutable by this method.
+        Use cases:
+        - Instead of let each tool process the llm request, we can let the toolset
+          process the llm request. e.g. ComputerUseToolset can add computer use
+          tool to the llm request.
 
-    Yields:
-      Event: Events for user interaction (e.g., authentication requests).
-    """
-    # Default implementation yields nothing (backward compatibility)
-    # Subclasses can override to yield authentication or other events
-    if False:  # This ensures the method is an AsyncGenerator
-      yield  # Required for AsyncGenerator type hint
-    return
+        Args:
+          tool_context: The context of the tool.
+          llm_request: The outgoing LLM request, mutable this method.
+        """
+        pass
+
+    async def generate_preprocessing_events(
+        self, *, tool_context: ToolContext, llm_request: LlmRequest
+    ) -> AsyncGenerator[Event, None]:
+        """Generates events during the preprocessing phase.
+
+        This method allows toolsets to generate events (such as authentication
+        requests) before tool discovery occurs. It has access to the full
+        ToolContext with authentication capabilities.
+
+        Use cases:
+        - OAuth2 authentication flows before tool discovery
+        - User confirmation requests for sensitive toolsets
+        - Dynamic configuration based on user context
+        - Pre-flight checks that require user interaction
+
+        Args:
+          tool_context: The context of the tool with full authentication capabilities.
+          llm_request: The outgoing LLM request, mutable by this method.
+
+        Yields:
+          Event: Events for user interaction (e.g., authentication requests).
+        """
+        # Default implementation yields nothing (backward compatibility)
+        # Subclasses can override to yield authentication or other events
+        if False:  # This ensures the method is an AsyncGenerator
+            yield  # Required for AsyncGenerator type hint
+        return
