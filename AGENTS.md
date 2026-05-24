@@ -594,3 +594,38 @@ Quick reference to important project files:
 *   **Converting Exceptions to Strings:** `str(e)` can be uninformative. `repr(e)` is often better. For full details including tracebacks and chained exceptions, use functions from the `traceback` module (e.g., `traceback.format_exception(e)`, `traceback.format_exc()`).
 *   **Terminating Programs:** Use `sys.exit()` for expected terminations. Uncaught non-`SystemExit` exceptions should signal bugs. Avoid functions that cause immediate, unclean exits like `os.abort()`.
 *   **Returning None:** Be consistent. If a function can return a value, all paths should return a value (use `return None` explicitly). Bare `return` is only for early exit in conceptually void functions (annotated with `-> None`).
+
+## Cursor Cloud specific instructions
+
+### Environment
+
+- Python 3.12 with `uv` package manager. The venv lives at `/workspace/.venv`.
+- Activate with `source /workspace/.venv/bin/activate` or invoke `.venv/bin/python` / `.venv/bin/pytest` directly.
+- `uv` is installed at `$HOME/.local/bin/uv`; ensure `$HOME/.local/bin` is on PATH.
+
+### Running services
+
+- **ADK Web UI** (development mode): `adk web contributing/samples/ --port 8000`
+  - Requires `GOOGLE_API_KEY` env var to actually interact with agents (Google AI Studio key).
+  - The web UI is pre-built static files; no Node.js build step needed.
+- **ADK CLI**: `adk run <path_to_agent>` for interactive testing.
+- **ADK API server**: `adk api_server <agents_dir>` for headless API mode.
+
+### Testing
+
+- Run all unit tests: `pytest tests/unittests` (or `pytest tests/unittests -n auto` for parallel).
+- Run a subset: `pytest tests/unittests/agents/` or a single file.
+- No external services (DBs, APIs) needed for unit tests; all are mocked.
+- A few tests in `tests/unittests/models/test_litellm.py` and `tests/unittests/flows/llm_flows/test_base_llm_flow.py` have pre-existing failures on main.
+
+### Linting & formatting
+
+- Check formatting: `pyink --check --diff --config pyproject.toml src/` and `isort --check src/`
+- Auto-format: `./autoformat.sh` (runs isort + pyink on src/, tests/, contributing/)
+- Both `pyink` and `isort` are installed via the `dev` extra.
+
+### Gotchas
+
+- The project has no `uv.lock` file committed; dependency resolution happens at `uv sync` time.
+- `crewai` extra only works on Python 3.11 (not 3.12+). Related tests are skipped on other versions.
+- The `graphviz` system binary is NOT installed in the Cloud VM; agent graph visualization in the web UI will show a fallback. This does not block development or testing.
